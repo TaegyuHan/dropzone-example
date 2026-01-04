@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropzone Demo</title>
+    <link rel="stylesheet" href="./dropzone.css">
+</head>
+<body>
+    <!-- 데모 레이아웃 컨테이너 -->
+    <main style="max-width: 720px; margin: 40px auto; font-family: Arial, sans-serif;">
+        <h1 style="margin-bottom: 12px;">간단한 Dropzone 예제</h1>
+        <p style="margin-top: 0; color: #555;">파일을 끌어놓거나 클릭해서 업로드를 시도해보세요. (action URL은 실제 업로드 엔드포인트로 바꿔야 합니다.)</p>
+
+        <!-- Dropzone 영역 -->
+        <form action="/upload" class="dropzone" id="demo-upload" style="border: 2px dashed #999; padding: 24px; background: #fafafa;"></form>
+
+        <!-- 썸네일 미리보기 리스트 -->
+        <section style="margin-top: 24px;">
+            <h2 style="margin-bottom: 8px;">선택된 이미지 미리보기</h2>
+            <p style="margin-top: 0; color: #666;">여러 파일을 올리면 아래 리스트에 순서대로 썸네일이 표시됩니다.</p>
+            <ul id="preview-list" style="list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px;"></ul>
+        </section>
+
+        <div style="margin-top: 20px; text-align: right;">
+            <button id="save-btn" type="button" style="padding: 10px 16px; background: #0d6efd; color: white; border: none; border-radius: 6px; cursor: pointer;">저장</button>
+        </div>
+    </main>
+
+    <!-- SRI 해시 검증이 실패하면 로드가 막히므로, 필요 시 올바른 해시로 교체하거나 무결성 검증을 제거하세요. -->
+     <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js" integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
+    <script src="./dropzone.js"></script>
+    <script>
+        // Dropzone이 자동으로 DOM을 스캔해 인스턴스를 붙이는 것을 방지
+        Dropzone.autoDiscover = false;
+    </script>
+    <script>
+        $(function () {
+            // Dropzone 인스턴스 생성 (autoProcessQueue false로 서버 전송 막음)
+            const uploadZone = new Dropzone("#demo-upload", {
+                url: "/upload",           // 필요 시 실제 엔드포인트로 교체
+                autoProcessQueue: false,    // 데모용: 서버 전송 막기
+                paramName: "files[]",
+                uploadMultiple: true,
+                parallelUploads: 5,
+                maxFiles: 20,
+                maxFilesize: 5,
+                acceptedFiles: "image/*",
+                addRemoveLinks: true,
+                dictDefaultMessage: "여기에 파일을 끌어다 놓거나 클릭하세요",
+            });
+
+            // 업로드 성공/실패 로깅
+            uploadZone.on("success", (file, response) => {
+                console.log("업로드 성공:", file.name, response);
+            });
+
+            uploadZone.on("error", (file, message) => {
+                console.error("업로드 실패:", file.name, message);
+            });
+
+            // 썸네일별 상태 저장: uuid -> { uuid, name, size, type, dataUrl, option, rotateDeg, flipX, flipY }
+            const itemState = new Map();
+            const $previewList = $("#preview-list");
+
+            // 썸네일 생성 시 커스텀 카드 렌더링
+            uploadZone.on("thumbnail", (file, dataUrl) => {
+                const uuid = file.upload?.uuid || file.name;
+                if ($previewList.find(`[data-uuid="${uuid}"]`).length) return;
+
+                itemState.set(uuid, {
+                    uuid,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    dataUrl,
+                    option: "opt-a",
+                    rotateDeg: 0,
+                    flipX: 1,
+                    flipY: 1,
+                });
+
+                const $li = $("<li>")
+                    .attr("data-uuid", uuid)
+                    .css({
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                        padding: "8px",
+                        background: "#fff",
+                    });
+
+                const $img = $("<img>")
+                    .attr({ src: dataUrl, alt: file.name })
+                    .css({ width: "100%", height: "100px", objectFit: "cover", borderRadius: "6px" });
+
+                // 옵션 선택 셀렉트 박스
+                const $select = $("<select>")
+                    .addClass("item-select")
+                    .css({ width: "100%", marginTop: "6px", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" })
+                    .append(
+                        $('<option value="opt-a">옵션 A</option>'),
+                        $('<option value="opt-b">옵션 B</option>'),
+                        $('<option value="opt-c">옵션 C</option>')
+                    )
+                    .on("change", function () {
+                        const cur = itemState.get(uuid);
+                        if (cur) cur.option = $(this).val();
+                    });
+
+                // 회전/반전 버튼 그룹
+                const btnStyle = { padding: "4px 6px", marginRight: "4px", border: "1px solid #bbb", borderRadius: "4px", background: "#f5f5f5", cursor: "pointer", fontSize: "12px" };
+                const $controls = $("<div>").css({ marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "4px" });
+                const buttons = [
+                    { text: "↶ 좌회전", action: "rot-left" },
+                    { text: "↷ 우회전", action: "rot-right" },
+                    { text: "↕ 상하반전", action: "flip-y" },
+                    { text: "↔ 좌우반전", action: "flip-x" },
+                    { text: "⟳ 초기화", action: "reset" },
+                ];
+
+                buttons.forEach(({ text, action }) => {
+                    $("<button type=\"button\">")
+                        .text(text)
+                        .data("action", action)
+                        .css(btnStyle)
+                        .on("click", () => {
+                            const cur = itemState.get(uuid);
+                            if (!cur) return;
+                            switch (action) {
+                                case "rot-left":
+                                    cur.rotateDeg = (cur.rotateDeg - 90) % 360;
+                                    break;
+                                case "rot-right":
+                                    cur.rotateDeg = (cur.rotateDeg + 90) % 360;
+                                    break;
+                                case "flip-y":
+                                    cur.flipY = cur.flipY * -1;
+                                    break;
+                                case "flip-x":
+                                    cur.flipX = cur.flipX * -1;
+                                    break;
+                                case "reset":
+                                    cur.rotateDeg = 0;
+                                    cur.flipX = 1;
+                                    cur.flipY = 1;
+                                    break;
+                            }
+                            applyTransforms($img, cur);
+                        })
+                        .appendTo($controls);
+                });
+
+                // 파일명 캡션
+                const $caption = $("<div>")
+                    .text(file.name)
+                    .css({ marginTop: "6px", fontSize: "13px", color: "#333" });
+
+                $li.append($img, $caption, $select, $controls);
+                $previewList.append($li);
+
+                applyTransforms($img, itemState.get(uuid));
+            });
+
+            // Dropzone 기본 UI에서 파일 제거 시 상태와 카드도 제거
+            uploadZone.on("removedfile", (file) => {
+                const uuid = file.upload?.uuid || file.name;
+                $previewList.find(`[data-uuid="${uuid}"]`).first().remove();
+                itemState.delete(uuid);
+            });
+
+            // 저장 버튼: 현재 상태를 배열로 직렬화해 AJAX로 백엔드 전송
+            $("#save-btn").on("click", () => {
+                const result = Array.from(itemState.values()).map((item) => ({
+                    uuid: item.uuid,
+                    name: item.name,
+                    size: item.size,
+                    type: item.type,
+                    dataUrl: item.dataUrl,
+                    option: item.option,
+                    rotateDeg: item.rotateDeg,
+                    flipX: item.flipX,
+                    flipY: item.flipY,
+                }));
+                console.log("저장 대상 목록", result);
+                
+                // AJAX로 백엔드 전송
+                $.ajax({
+                    url: "/api/images/upload",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify(result),
+                    success: (response) => {
+                        console.log("서버 응답:", response);
+                        alert(`저장 성공! ${response.count || result.length}건이 처리되었습니다.`);
+                    },
+                    error: (xhr, status, error) => {
+                        console.error("저장 실패:", error);
+                        alert("저장 실패: " + (xhr.responseJSON?.message || error));
+                    }
+                });
+            });
+
+            // 회전/반전 값을 실제 이미지 스타일에 반영
+            function applyTransforms($img, state) {
+                if (!state) return;
+                const transform = `rotate(${state.rotateDeg}deg) scale(${state.flipX}, ${state.flipY})`;
+                $img.css("transform", transform);
+            }
+        });
+    </script>
+</body>
+</html>
